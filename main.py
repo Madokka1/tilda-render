@@ -6,7 +6,7 @@ from psycopg2.extras import RealDictCursor
 
 app = FastAPI()
 
-# Разрешаем запросы с Тильды
+# Улучшенный CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,19 +15,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Читаем переменную из настроек Render
 DB_URI = os.getenv("DATABASE_URL")
 
 @app.get("/busy-dates")
 async def get_dates():
-    conn = psycopg2.connect(DB_URI)
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT booking_date FROM appointments")
-    rows = cur.fetchall()
-    dates = [row['booking_date'].strftime('%Y-%m-%d') for row in rows]
-    cur.close()
-    conn.close()
-    return dates
+    try:
+        # Проверка: установлена ли переменная
+        if not DB_URI:
+            return {"error": "DATABASE_URL is not set"}
+            
+        conn = psycopg2.connect(DB_URI)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT booking_date FROM appointments WHERE booking_date IS NOT NULL")
+        rows = cur.fetchall()
+        
+        # Форматируем даты, проверяя, что они существуют
+        dates = []
+        for row in rows:
+            if row['booking_date']:
+                dates.append(row['booking_date'].strftime('%Y-%m-%d'))
+        
+        cur.close()
+        conn.close()
+        return dates
+    except Exception as e:
+        print(f"ОШИБКА БАЗЫ: {e}") # Это отобразится в логах Render
+        return [] # Возвращаем пустой список вместо падения сервера (500)
 
 @app.post("/webhook")
 async def handle_tilda(
@@ -36,6 +49,9 @@ async def handle_tilda(
     calendar: str = Form(None)
 ):
     try:
+        if not calendar:
+            return {"status": "error", "message": "No date provided"}
+            
         conn = psycopg2.connect(DB_URI)
         cur = conn.cursor()
         cur.execute(
@@ -47,4 +63,5 @@ async def handle_tilda(
         conn.close()
         return {"status": "ok"}
     except Exception as e:
+        print(f"ОШИБКА WEBHOOK: {e}")
         return {"status": "error", "detail": str(e)}
