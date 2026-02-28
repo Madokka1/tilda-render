@@ -46,34 +46,36 @@ async def handle_tilda(
 ):
     try:
         if not calendar or not phone:
-            return {"status": "error", "message": "Missing data"}
+            return {"status": "error", "message": "Данные не полные"}
 
         conn = psycopg2.connect(DB_URI)
         cur = conn.cursor()
 
-        # 1. Пытаемся найти пользователя по телефону или создать нового
-        # SQL запрос: если телефон есть - вернуть ID, если нет - вставить и вернуть ID
+        # 1. Находим или создаем пользователя
         cur.execute("""
             INSERT INTO users (name, phone) 
             VALUES (%s, %s) 
             ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name
             RETURNING id
         """, (name, phone))
-        
         user_id = cur.fetchone()[0]
 
-        # 2. Создаем саму запись, привязанную к этому user_id
-        cur.execute(
-            "INSERT INTO appointments (user_id, booking_date) VALUES (%s, %s)",
-            (user_id, calendar)
-        )
+        # 2. Логика ПЕРЕНОСА: 
+        # Если у этого пользователя уже есть запись — обновляем её на новую дату.
+        # Если нет — создаем новую.
+        cur.execute("""
+            INSERT INTO appointments (user_id, booking_date)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE 
+            SET booking_date = EXCLUDED.booking_date
+        """, (user_id, calendar))
 
         conn.commit()
         cur.close()
         conn.close()
-        return {"status": "ok", "user_id": user_id}
+        return {"status": "ok", "message": "Запись успешно обновлена/создана"}
     except Exception as e:
-        print(f"WEBHOOK ERROR: {e}")
+        print(f"Ошибка: {e}")
         return {"status": "error", "detail": str(e)}
 
 @app.get("/busy-dates")
