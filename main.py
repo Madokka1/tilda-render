@@ -90,3 +90,22 @@ async def get_dates():
         return dates
     except Exception as e:
         return []
+
+@app.get("/user-appointments")
+async def get_user_appts(phone: str):
+    try:
+        conn = psycopg2.connect(DB_URI)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Ищем все даты записей для конкретного телефона
+        cur.execute("""
+            SELECT TO_CHAR(a.booking_date, 'YYYY-MM-DD HH24:MI') as slot 
+            FROM appointments a
+            JOIN users u ON a.user_id = u.id
+            WHERE u.phone = %s
+        """, (phone,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [row['slot'] for row in rows]
+    except:
+        return []
