@@ -45,13 +45,10 @@ async def handle_tilda(
     calendar: str = Form(None)
 ):
     try:
-        if not calendar or not phone:
-            return {"status": "error", "message": "Данные не полные"}
-
         conn = psycopg2.connect(DB_URI)
         cur = conn.cursor()
 
-        # 1. Находим или создаем пользователя
+        # Находим или создаем юзера
         cur.execute("""
             INSERT INTO users (name, phone) 
             VALUES (%s, %s) 
@@ -60,22 +57,17 @@ async def handle_tilda(
         """, (name, phone))
         user_id = cur.fetchone()[0]
 
-        # 2. Логика ПЕРЕНОСА: 
-        # Если у этого пользователя уже есть запись — обновляем её на новую дату.
-        # Если нет — создаем новую.
-        cur.execute("""
-            INSERT INTO appointments (user_id, booking_date)
-            VALUES (%s, %s)
-            ON CONFLICT (user_id) DO UPDATE 
-            SET booking_date = EXCLUDED.booking_date
-        """, (user_id, calendar))
+        # ПРОСТО ДОБАВЛЯЕМ новую запись (без ON CONFLICT)
+        cur.execute(
+            "INSERT INTO appointments (user_id, booking_date) VALUES (%s, %s)",
+            (user_id, calendar)
+        )
 
         conn.commit()
         cur.close()
         conn.close()
-        return {"status": "ok", "message": "Запись успешно обновлена/создана"}
+        return {"status": "ok"}
     except Exception as e:
-        print(f"Ошибка: {e}")
         return {"status": "error", "detail": str(e)}
 
 @app.get("/busy-dates")
