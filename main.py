@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -14,8 +14,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ТВОЙ КОННЕКТ К NEON
+# Читаем переменную из настроек Render
 DB_URI = os.getenv("DATABASE_URL")
+
+@app.get("/busy-dates")
+async def get_dates():
+    conn = psycopg2.connect(DB_URI)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT booking_date FROM appointments")
+    rows = cur.fetchall()
+    dates = [row['booking_date'].strftime('%Y-%m-%d') for row in rows]
+    cur.close()
+    conn.close()
+    return dates
 
 @app.post("/webhook")
 async def handle_tilda(
@@ -36,15 +47,3 @@ async def handle_tilda(
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
-
-@app.get("/busy-dates")
-async def get_dates():
-    conn = psycopg2.connect(DB_URI)
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT booking_date FROM appointments")
-    rows = cur.fetchall()
-    # Форматируем даты в список строк ['2026-02-24', ...]
-    dates = [row['booking_date'].strftime('%Y-%m-%d') for row in rows]
-    cur.close()
-    conn.close()
-    return dates
