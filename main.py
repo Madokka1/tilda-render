@@ -45,19 +45,48 @@ async def handle_tilda(
     calendar: str = Form(None)
 ):
     try:
-        if not calendar:
-            return {"status": "error", "message": "No date provided"}
-            
+        if not calendar or not phone:
+            return {"status": "error", "message": "Missing data"}
+
         conn = psycopg2.connect(DB_URI)
         cur = conn.cursor()
+
+        # 1. Пытаемся найти пользователя по телефону или создать нового
+        # SQL запрос: если телефон есть - вернуть ID, если нет - вставить и вернуть ID
+        cur.execute("""
+            INSERT INTO users (name, phone) 
+            VALUES (%s, %s) 
+            ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id
+        """, (name, phone))
+        
+        user_id = cur.fetchone()[0]
+
+        # 2. Создаем саму запись, привязанную к этому user_id
         cur.execute(
-            "INSERT INTO appointments (name, phone, booking_date) VALUES (%s, %s, %s)",
-            (name, phone, calendar)
+            "INSERT INTO appointments (user_id, booking_date) VALUES (%s, %s)",
+            (user_id, calendar)
         )
+
         conn.commit()
         cur.close()
         conn.close()
-        return {"status": "ok"}
+        return {"status": "ok", "user_id": user_id}
     except Exception as e:
-        print(f"ОШИБКА WEBHOOK: {e}")
+        print(f"WEBHOOK ERROR: {e}")
         return {"status": "error", "detail": str(e)}
+
+@app.get("/busy-dates")
+async def get_dates():
+    try:
+        conn = psycopg2.connect(DB_URI)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Нам всё еще нужно просто отдавать список занятых слотов для календаря
+        cur.execute("SELECT TO_CHAR(booking_date, 'YYYY-MM-DD HH24:MI') as slot FROM appointments")
+        rows = cur.fetchall()
+        dates = [row['slot'] for row in rows]
+        cur.close()
+        conn.close()
+        return dates
+    except Exception as e:
+        return []
