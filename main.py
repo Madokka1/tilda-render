@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg2
@@ -14,7 +15,7 @@ app.add_middleware(
 )
 
 # ТВОЙ КОННЕКТ К NEON
-DB_URI = "postgresql://neondb_owner:npg_8p1GvNwlZLWD@ep-purple-tree-ae6blqee-pooler.c-2.us-east-2.aws.neon.tech/record?sslmode=require"
+DB_URI = os.getenv("DATABASE_URL")
 
 @app.post("/webhook")
 async def handle_tilda(
